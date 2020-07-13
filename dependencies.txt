@@ -1,0 +1,1 @@
+conda install python=3.7 flask=1.1.2 pyquery=1.4.0 sqlite=3.32.3 conda-forge::python-wget=3.2
