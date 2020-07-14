@@ -6,6 +6,7 @@ import json
 import gzip
 import logging
 import shutil
+import io
 
 from config import PROXY, ERROR_DELAY, DEBUG
 
@@ -28,15 +29,12 @@ def load_with_retry(url, need_json=False, use_gzip=True):
             body = response.read()
             if response.headers.get('Content-Encoding') == 'gzip':
                 body = gzip.decompress(body)
-            try:
-                body = body.decode()
-            except:
-                body = body.decode("cp1252")
+            body = decode_str(body)
             if need_json:
                 body = json.loads(body)
             return body
-        except KeyboardInterrupt:
-            return None
+        except KeyboardInterrupt as e:
+            raise e
         except urllib.error.HTTPError as err:
             if err.code == 404:
                 return ''
@@ -52,6 +50,14 @@ def load_with_retry(url, need_json=False, use_gzip=True):
         finally:
             opener.addheaders = []
             urllib.request.install_opener(None)
+
+
+def decode_str(body):
+    try:
+        body = body.decode()
+    except:
+        body = body.decode("cp1252")
+    return body
 
 
 def load_file(url, file_name, use_gzip=True):
@@ -80,7 +86,7 @@ def load_file(url, file_name, use_gzip=True):
 
 def gzip_file(ifn, ofn):
     block_size = 1024*1024
-    with open(ifn, 'rb') as f_in:
+    with io.open(ifn, 'rb') as f_in:
         with gzip.open(ofn, 'wb') as f_out:
             while True:
                 block = f_in.read(block_size)

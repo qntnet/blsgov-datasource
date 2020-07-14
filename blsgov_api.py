@@ -1,26 +1,25 @@
 import logging
-from http_api import load_with_retry, load_file
+from http_api import load_with_retry, load_file, decode_str
 import json
 import datetime
 from pyquery import PyQuery
 import abc
 import os
 import shutil
-import wget
 import re
-import time
 import gzip
 import zipfile
 import io
 from functools import cmp_to_key
 
-from config import REGISTRATION_KEY, WORK_DIR, ERROR_DELAY
+from config import REGISTRATION_KEY, WORK_DIR
 
 BASE_FILE_URL = 'https://download.bls.gov/pub/time.series/'
 BASE_API_URL = 'https://api.bls.gov/publicAPI/v2/'
 
+REDOWNLOAD = False # should be True
+
 logger = logging.getLogger(__name__)
-logger.level = logging.INFO
 
 
 def log(*args):
@@ -53,12 +52,18 @@ def load_db_list():
     dbs2 = dict((i['survey_abbreviation'], i['survey_name']) for i in jsobj)
 
     dbs = {**dbs, **dbs2}
-    loaders_ids = [l.symbol for l in loaders]
-    return dict(i for i in dbs.items() if i[0] in loaders_ids)
+
+    missed  = [i for i in dbs.keys() if get_loader(i) is None]
+    dbs = [{"symbol": i[0], "name":i[1], "modified": get_loader(i[0]).get_last_modification().isoformat()}
+           for i in dbs.items() if get_loader(i[0]) is not None]
+
+    log("loaders not found for:", missed)
+    return dbs
 
 
 def get_loader(symbol):
-    return next((l for l in loaders if l.symbol == symbol))
+    loader = next((l for l in loaders if l.symbol == symbol), None)
+    return loader
 
 
 class AbstractDbLoader(abc.ABC):
@@ -74,7 +79,7 @@ class AbstractDbLoader(abc.ABC):
         """ returns last modification date """
         ff = self.load_file_list()
         if len(ff) < 1:
-            return datetime.datetime(1900, 1, 1, tzinfo=datetime.timezone.utc)
+            return datetime.datetime(1900, 1, 1, tzinfo=None)
         else:
             return max(f['modified'] for f in ff)
 
@@ -85,7 +90,12 @@ class AbstractDbLoader(abc.ABC):
 
     def clear(self):
         """ clear loaded data """
-        shutil.rmtree(self.work_dir)
+        if not REDOWNLOAD:
+            return
+        try:
+            shutil.rmtree(self.work_dir)
+        except FileNotFoundError:
+            pass
 
     @abc.abstractmethod
     def parse_meta(self):
@@ -107,6 +117,14 @@ class AbstractDbLoader(abc.ABC):
         """ generator, returns parsed_aspects """
         pass
 
+    @abc.abstractmethod
+    def approx_data_count(self):
+        pass
+
+    @abc.abstractmethod
+    def approx_series_count(self):
+        pass
+
     def load_file_list(self):
         try:
             sl = self.symbol.lower()
@@ -123,8 +141,8 @@ class AbstractDbLoader(abc.ABC):
                 prvtxt = prvtxt.split()
                 f = {
                     "name": name[len(sl) + len(self.file_prefix_delimiter):],
-                    "modified": datetime.datetime.strptime(prvtxt[0] + " " + prvtxt[1] + " " + prvtxt[2] + " +0000",
-                                                           "%m/%d/%Y %H:%M %p %z", ),
+                    "modified": datetime.datetime.strptime(prvtxt[0] + " " + prvtxt[1] + " " + prvtxt[2],
+                                                           "%m/%d/%Y %H:%M %p"),
                     "size": int(prvtxt[3])
                 }
                 files.append(f)
@@ -135,10 +153,10 @@ class AbstractDbLoader(abc.ABC):
     def download_file(self, f, use_gzip):
         url = BASE_FILE_URL + self.symbol.lower() + "/" + self.symbol.lower() + self.file_prefix_delimiter + f['name']
         file_name = os.path.join(self.work_dir, f['name'] + ('.gz' if use_gzip else ''))
-        if not os.path.exists(file_name):
+        if not os.path.exists(file_name) or REDOWNLOAD:
             load_file(url, file_name, use_gzip)
         f['path'] = file_name
-        f['open'] = (lambda mode : gzip.open(file_name, mode)) if use_gzip else (lambda mode : open(file_name, mode))
+        f['open'] = (lambda mode : gzip.open(file_name, mode)) if use_gzip else (lambda mode : io.open(file_name, mode))
 
 
 class StandardDbLoader(AbstractDbLoader):
@@ -228,10 +246,30 @@ class StandardDbLoader(AbstractDbLoader):
             result[f['name']] = self.read_txt(f)
         return result
 
+    def approx_data_count(self):
+        counter = -1
+        for f in self.data_files:
+            with f['open']('rt') as fd:
+                while len(fd.readline()) > 0:
+                    counter += 1
+        return max(1, counter)
+
+    def approx_series_count(self):
+        counter = -1
+        with self.series_file['open']('rt') as f:
+            while len(f.readline()) > 0:
+                counter += 1
+        return max(1, counter)
+
     def parse_series(self):
         log(self.symbol + ": parse series")
         last = None
         with self.series_file['open']('rt') as f:
+            if self.symbol == 'CC':
+                txt = f.read()
+                txt = "end_period\nCCU".join(txt.split("end_periodCCU"))
+                f = io.StringIO(txt)
+
             header = f.readline()
             header = header.split('\t')
             header = [h.strip() for h in header]
@@ -496,7 +534,8 @@ if __name__ == "__main__":
     # log(load_db_list())
     # log(load_db_file_list("AP"))
 
-    # log(load_db_list())
+    log(load_db_list())
+    exit(0)
 
     # loader=StandardDbLoader('CI')
     loader=get_loader('BD')
