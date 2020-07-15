@@ -54,27 +54,27 @@ def load_db_list():
 
     dbs = {**dbs, **dbs2}
 
-    missed  = [i for i in dbs.keys() if get_loader(i) is None]
-    dbs = [{"symbol": i[0], "name":i[1], "modified": get_loader(i[0]).get_last_modification().isoformat()}
+    missed = [i for i in dbs.keys() if get_loader(i) is None]
+    dbs = [{"id": i[0], "name": i[1], "modified": get_loader(i[0]).get_last_modification().isoformat()}
            for i in dbs.items() if get_loader(i[0]) is not None]
 
     log("loaders not found for:", missed)
     return dbs
 
 
-def get_loader(symbol):
-    loader = next((l for l in loaders if l.symbol == symbol), None)
+def get_loader(db_id):
+    loader = next((l for l in loaders if l.db_id == db_id), None)
     return loader
 
 
 class AbstractDbLoader(abc.ABC):
-    symbol = ''
+    db_id = ''
     work_dir = ''
     file_prefix_delimiter = '.'
 
-    def __init__(self, symbol):
-        self.symbol = symbol
-        self.work_dir = os.path.join(WORK_DIR, 'tmp', 'download', symbol)
+    def __init__(self, db_id):
+        self.db_id = db_id
+        self.work_dir = os.path.join(WORK_DIR, 'tmp', 'download', db_id.lower())
 
     def get_last_modification(self):
         """ returns last modification date """
@@ -128,7 +128,7 @@ class AbstractDbLoader(abc.ABC):
 
     def load_file_list(self):
         try:
-            sl = self.symbol.lower()
+            sl = self.db_id.lower()
             file_url = BASE_FILE_URL + sl + "/"
             txt = load_with_retry(file_url)
             pq = PyQuery(txt)
@@ -136,7 +136,7 @@ class AbstractDbLoader(abc.ABC):
             files = []
             for a in pq[1:]:
                 name = a.attrib['href'].split('/')[-1]
-                if not name.startswith(sl + self.file_prefix_delimiter):
+                if not name.lower().startswith(sl + self.file_prefix_delimiter):
                     continue
                 prvtxt = PyQuery(a).prev()[0].tail
                 prvtxt = prvtxt.split()
@@ -152,7 +152,7 @@ class AbstractDbLoader(abc.ABC):
             return []
 
     def download_file(self, f, use_gzip):
-        url = BASE_FILE_URL + self.symbol.lower() + "/" + self.symbol.lower() + self.file_prefix_delimiter + f['name']
+        url = BASE_FILE_URL + self.db_id.lower() + "/" + self.db_id.lower() + self.file_prefix_delimiter + f['name']
         file_name = os.path.join(self.work_dir, f['name'] + ('.gz' if use_gzip else ''))
         if not os.path.exists(file_name) or REDOWNLOAD:
             load_file(url, file_name, use_gzip)
@@ -171,29 +171,33 @@ class StandardDbLoader(AbstractDbLoader):
         os.makedirs(self.work_dir, exist_ok=True)
 
         files = self.load_file_list()
+        files = [f for f in files if not f['name'].startswith('old.series.')]
         self.series_file = next(f for f in files if f['name'] == 'series')
-        self.aspect_files = [f for f in files if f['name'] == 'aspect' or f['name'].startswith('aspect.')]
-        self.data_files = [f for f in files if f['name'] == 'data' or f['name'].startswith('data.')]
-        self.txt_files = [f for f in files if f['name'] == 'txt' or f['name'] == 'contacts']
+        self.aspect_files = [f for f in files if (f['name'] == 'aspect' or f['name'].startswith('aspect.'))
+                             and f['name'] != 'aspect.type']
+        self.data_files = [f for f in files if (f['name'] == 'data' or f['name'].startswith('data.'))
+                           and f['name'] != 'data.type']
+        self.txt_files = [f for f in files if f['name'] == 'txt' or f['name'] == 'contacts' or f['name'] == 'MapErrors']
         not_dicts = [self.series_file] + self.aspect_files + self.data_files + self.txt_files
         self.dict_files = [f for f in files if f != self.series_file and f not in not_dicts]
 
         for f in files:
-             self.download_file(f, True)
+            self.download_file(f, True)
 
     @staticmethod
     def read_txt(f):
         with f['open']('rb') as fd:
             b = fd.read()
         try:
-            return b.decode("utf-8")
+            res = b.decode("utf-8")
         except:
-            return b.decode("cp1252")
+            res = b.decode("cp1252")
+        if f['name'] == 'MapErrors':
+            res = "AM\nMW".join(res.split("AMMW"))
+        return res
 
     def parse_dict(self, f):
         txt = self.read_txt(f)
-        if self.symbol == 'MW' and f['name'] == 'MapErrors':
-            txt = "AM\nMW".join(txt.split("AMMW"))
         legacy = '\t' not in txt
         txt = txt.split("\n")
         if legacy:
@@ -225,7 +229,7 @@ class StandardDbLoader(AbstractDbLoader):
             hlen = max(len(t) for t in txt)
             header = ['column' + str(i) for i in range(hlen)]
             header[0] = 'id'
-            if self.symbol == 'CD' and f['name'] == 'category':
+            if self.db_id == 'CD' and f['name'] == 'category':
                 txt[0] = txt[0][1:]
             for i in range(len(txt[0])):
                 if len(txt[0][i]) != 0:
@@ -239,7 +243,7 @@ class StandardDbLoader(AbstractDbLoader):
         return rows
 
     def parse_meta(self):
-        log(self.symbol + ": parse meta")
+        log(self.db_id + ": parse meta")
         result = dict()
         for f in self.dict_files:
             result[f['name']] = self.parse_dict(f)
@@ -263,10 +267,10 @@ class StandardDbLoader(AbstractDbLoader):
         return max(1, counter)
 
     def parse_series(self):
-        log(self.symbol + ": parse series")
+        log(self.db_id + ": parse series")
         last = None
         with self.series_file['open']('rt') as f:
-            if self.symbol == 'CC':
+            if self.db_id == 'CC':
                 txt = f.read()
                 txt = "end_period\nCCU".join(txt.split("end_periodCCU"))
                 f = io.StringIO(txt)
@@ -285,14 +289,16 @@ class StandardDbLoader(AbstractDbLoader):
                     continue
                 r = dict(zip(header, line))
                 last = r
+                r['id'] = r['series_id']
+                del r['series_id']
                 yield r
-        log(self.symbol + ": last series: " + str(last))
+        log(self.db_id + ": last series: " + str(last))
 
     def parse_data(self):
         data_files = sorted(self.data_files, key=cmp_to_key(file_cmp))
         for f in data_files:
             with f['open']('rt') as fd:
-                log(self.symbol + ": parse " + f['name'])
+                log(self.db_id + ": parse " + f['name'])
                 header = fd.readline()
                 header = header.strip()
                 header = header.split('\t')
@@ -336,13 +342,13 @@ class StandardDbLoader(AbstractDbLoader):
                     }
                     yield record
                     last = {'line':line, 'record':record}
-                log(self.symbol + ": last record:" + str(last))
+                log(self.db_id + ": last record:" + str(last))
 
     def parse_aspect(self):
         aspect_files = sorted(self.aspect_files, key=cmp_to_key(file_cmp))
         for f in aspect_files:
             with f['open']('rt') as fd:
-                log(self.symbol + ": parse " + f['name'])
+                log(self.db_id + ": parse " + f['name'])
                 header = fd.readline()
                 header = header.strip()
                 header = header.split('\t')
@@ -388,7 +394,7 @@ class StandardDbLoader(AbstractDbLoader):
                     }
                     yield record
                     last = {'line':line, 'record':record}
-                log(self.symbol + ": last record:" + str(last))
+                log(self.db_id + ": last record:" + str(last))
 
 
 def file_cmp(f1, f2):
@@ -415,8 +421,8 @@ def file_cmp(f1, f2):
 
 class ZipDbLoader(StandardDbLoader):
 
-    def __init__(self, symbol):
-        super().__init__(symbol)
+    def __init__(self, db_id):
+        super().__init__(db_id)
         self.file_prefix_delimiter = '_'
 
     def download(self):
@@ -450,7 +456,7 @@ class ZipDbLoader(StandardDbLoader):
                     return opener
 
                 res.append({
-                    'name': i.filename[len(self.symbol) + len(self.file_prefix_delimiter):],
+                    'name': i.filename[len(self.db_id) + len(self.file_prefix_delimiter):],
                     'open': mk_opener(zf, i.filename)
                 })
         return res

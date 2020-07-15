@@ -22,7 +22,7 @@ def log(*args):
     logger.log(logging.INFO, s)
 
 
-def update_dbs(symbols = None, force_all=False):
+def update_dbs(db_ids=None, force_all=False):
     log('load db lists')
 
     new_db_list = load_db_list()
@@ -33,20 +33,22 @@ def update_dbs(symbols = None, force_all=False):
     except:
         pass
 
+    new_db_list.sort(key=lambda d: d['modified'])
     for ndb in new_db_list:
-        if symbols is not None and ndb['symbol'] not in symbols:
+        if db_ids is not None and ndb['id'] not in db_ids:
             continue
-        cdb = next((i for i in cur_db_list if i['symbol'] == ndb['symbol']), None)
+        cdb = next((i for i in cur_db_list if i['id'] == ndb['id']), None)
         if cdb is None or cdb['modified'] < ndb['modified'] or force_all: # check corrupted files
             if cdb is not None:
                 cur_db_list.remove(cdb)
             cur_db_list.append(ndb)
-            updater = Updater(ndb['symbol'])
+            updater = Updater(ndb['id'])
             updater.prepare_update()
 
             with exclusive_lock():
                 updater.update()
                 with gzip.open(DB_LIST_FILE_NAME, 'wt') as f:
+                    cur_db_list.sort(key=lambda d: d['modified'])
                     f.write(json.dumps(cur_db_list, indent=1))
 
 
@@ -113,7 +115,7 @@ class Updater:
         def write_series_batch():
             fn = os.path.join(self.tmp_dir, TMP_PREFIX + SERIES_PREFIX + str(i) + JSON_GZ_SUFFIX)
             batch_files.append(fn)
-            batch.sort(key=lambda b:b['series_id'])
+            batch.sort(key=lambda b: b['id'])
             with gzip.open(fn, 'wt') as f:
                 for b in batch:
                     f.write(json.dumps(b) + "\n")
@@ -146,7 +148,7 @@ class Updater:
                     fds = [fd for fd in fds if fd['file'] is not None]
                     if len(fds) == 0:
                         break
-                mx = min(fds, key=lambda fd: fd['cur']['series_id'])
+                mx = min(fds, key=lambda fd: fd['cur']['id'])
                 yield mx['cur']
                 mx['cur'] = None
 
@@ -154,13 +156,13 @@ class Updater:
         for s in sorted_series_generator():
             batch.append(s)
             if len(batch) >= self.batch_size:
-                fn = os.path.join(self.tmp_dir, SERIES_PREFIX + batch[0]['series_id'] + '.' + batch[-1]['series_id'] + JSON_GZ_SUFFIX)
+                fn = os.path.join(self.tmp_dir, SERIES_PREFIX + batch[0]['id'] + '.' + batch[-1]['id'] + JSON_GZ_SUFFIX)
                 with gzip.open(fn, 'wt') as f:
                     f.write(array_to_json(batch))
                 i += 1
                 batch = []
         if len(batch) > 0:
-            fn = os.path.join(self.tmp_dir, SERIES_PREFIX + batch[0]['series_id'] + '.' + batch[-1]['series_id'] + JSON_GZ_SUFFIX)
+            fn = os.path.join(self.tmp_dir, SERIES_PREFIX + batch[0]['id'] + '.' + batch[-1]['id'] + JSON_GZ_SUFFIX)
             with gzip.open(fn, 'wt') as f:
                 f.write(array_to_json(batch))
 
@@ -218,5 +220,5 @@ if __name__ == '__main__':
     log(sys.argv)
     force = '-f' in sys.argv
     all = '-a' in sys.argv
-    symbols = [i for i in sys.argv if not i.startswith('-')]
-    update_dbs(symbols if not all else None, force)
+    db_ids = [i for i in sys.argv if not i.startswith('-')]
+    update_dbs(db_ids if not all else None, force)

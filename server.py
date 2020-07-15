@@ -14,8 +14,8 @@ app = Flask("blsgov-datasource")
 app.wsgi_app = ProxyFix(app.wsgi_app)
 
 
-@app.route('/files/<path>')
-@app.route('/files/')
+@app.route('/api/files/<path>')
+@app.route('/api/files/')
 def get_files(path=''):
     with shared_lock():
         path = safe_join(WRK_DB_DIR, path) if len(path) > 0 else WRK_DB_DIR
@@ -29,22 +29,22 @@ def get_files(path=''):
             return send_file(path)
 
 
-@app.route('/db/')
-@app.route('/db/<db_id>')
+@app.route('/api/db/')
+@app.route('/api/db/<db_id>')
 def get_db_list(db_id=None):
     with shared_lock():
         with gzip.open(DB_LIST_FILE_NAME, 'rt') as f:
             dbs = f.read()
         dbs = json.loads(dbs)
         if db_id is not None:
-            db = next((d for d in dbs if d['symbol'] == db_id), None)
+            db = next((d for d in dbs if d['id'] == db_id), None)
             if db is None:
                 raise NotFound()
             jsonify(db)
         return jsonify(dbs)
 
 
-@app.route('/db/<db_id>/meta')
+@app.route('/api/db/<db_id>/meta')
 def get_meta(db_id=None):
     with shared_lock():
         path = safe_join(WRK_DB_DIR, db_id.lower())
@@ -57,12 +57,13 @@ def get_meta(db_id=None):
         return jsonify(data)
 
 
-@app.route('/db/<db_id>/series/')
-@app.route('/db/<db_id>/series/<series_id>')
+@app.route('/api/db/<db_id>/series/')
+@app.route('/api/db/<db_id>/series/<series_id>')
 def get_series(db_id=None, series_id=None):
     with shared_lock():
         last_series_id = request.args.get('after')
         db_path = safe_join(WRK_DB_DIR, db_id.lower())
+
         files = os.listdir(db_path)
         files = [{
             "from": f.split(FILE_NAME_DELIMITER)[1],
@@ -70,32 +71,37 @@ def get_series(db_id=None, series_id=None):
             "name": f
         } for f in files if f.startswith(SERIES_PREFIX)]
         files.sort(key=lambda f: f['from'])
-        if last_series_id is None:
+        if series_id is not None:
+            series_file = next((f for f in files if f['from'] <= series_id <= f['to']), None)
+        elif last_series_id is None:
             series_file = files[0]
         else:
             series_file = next((f for f in files if f['to'] > last_series_id), None)
         if series_file is None:
             return jsonify([])
+
         series_path = os.path.join(db_path, series_file['name'])
         with gzip.open(series_path, 'rt') as f:
             series = f.read()
-
         series = json.loads(series)
-        if last_series_id is not None:
-            series = [s for s in series if s['series_id'] > last_series_id]
-        if series_id is not None:  # todo
-            series = next((s for s in series if s['series_id'] == series_id), None)
+
+        if series_id is not None:
+            series = next((s for s in series if s['id'] == series_id), None)
             if series is None:
                 raise NotFound()
             return jsonify(series)
+
+        if last_series_id is not None:
+            series = [s for s in series if s['id'] > last_series_id]
+
         return {
             'data': series,
-            'next_page': None if files.index(series_file) >= len(files) - 1 else ('?after=' + series[-1]['series_id'])
+            'next_page': None if files.index(series_file) >= len(files) - 1 else ('?after=' + series[-1]['id'])
             # TODO better pagination: count, offset, limit
         }
 
 
-@app.route('/db/<db_id>/series/<series_id>/<kind>')
+@app.route('/api/db/<db_id>/series/<series_id>/<kind>')
 def get_data(db_id, series_id=None, kind=None):
     with shared_lock():
         prefix = kind + FILE_NAME_DELIMITER
