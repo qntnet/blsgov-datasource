@@ -1,23 +1,24 @@
-import logging
-from http_api import load_with_retry, load_file, decode_str
-import json
-import datetime
-from pyquery import PyQuery
 import abc
-import os
-import shutil
-import re
+import datetime
 import gzip
-import zipfile
 import io
+import json
+import logging
+import os
+import re
+import shutil
+import zipfile
 from functools import cmp_to_key
 
+from pyquery import PyQuery
+
 from config import REGISTRATION_KEY, WORK_DIR
+from http_api import load_with_retry, load_file
 
 BASE_FILE_URL = 'https://download.bls.gov/pub/time.series/'
 BASE_API_URL = 'https://api.bls.gov/publicAPI/v2/'
 
-REDOWNLOAD = False # should be True
+REDOWNLOAD = True  # should be True
 
 logger = logging.getLogger(__name__)
 

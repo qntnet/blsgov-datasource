@@ -1,14 +1,16 @@
-import json, gzip
+import gzip
+import itertools
+import json
+import logging
+import os
+import shutil
+import sys
+import zipfile
+
 from blsgov_api import load_db_list, get_loader
-from config import WRK_DB_DIR, META_GZ_FILE_NAME, TMP_DB_DIR, DATA_PREFIX, ASPECT_PREFIX, \
+from config import WRK_DB_DIR, META_FILE_NAME, TMP_DB_DIR, DATA_PREFIX, ASPECT_PREFIX, \
     SERIES_PREFIX, JSON_GZ_SUFFIX, JSON_SUFFIX, ZIP_SUFFIX, DB_LIST_FILE_NAME, MAX_SERIES_PER_BATCH, \
     MAX_DATA_PER_BATCH
-import os, sys
-import shutil
-import logging
-import zipfile
-import itertools
-
 from lock import exclusive_lock
 
 TMP_PREFIX = 'tmp.'
@@ -97,7 +99,7 @@ class Updater:
         log(self.symbol + ": update meta")
         # load meta
         meta = self.loader.parse_meta()
-        meta_fn = os.path.join(self.tmp_dir, META_GZ_FILE_NAME)
+        meta_fn = os.path.join(self.tmp_dir, META_FILE_NAME)
         with gzip.open(meta_fn, 'wt') as f:
             f.write(json.dumps(meta, indent=1))
 

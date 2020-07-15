@@ -1,5 +1,6 @@
-import os
+import io
 import logging
+import os
 
 PROXY = os.getenv('PROXY')
 REGISTRATION_KEY = os.getenv('REGISTRATION_KEY', '')
@@ -8,14 +9,13 @@ logging.basicConfig(level=logging.INFO)
 
 ERROR_DELAY = 10
 
-PORT = 5000
-DEBUG = True
+DEBUG = os.getenv("DEBUG", 'true').lower() == 'true'
 
 WORK_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "work")
 WRK_DB_DIR = os.path.join(WORK_DIR, 'dbs')
 DB_LIST_FILE_NAME = os.path.join(WRK_DB_DIR, 'list.json.gz')
 
-META_GZ_FILE_NAME = 'meta.json.gz'
+META_FILE_NAME = 'meta.json.gz'
 
 TMP_DB_DIR = os.path.join(WORK_DIR, 'tmp', 'dbs')
 
@@ -30,8 +30,7 @@ FILE_NAME_DELIMITER='.'
 
 LOCK_FILE = os.path.join(WORK_DIR, 'lock')
 
-import io
-io.DEFAULT_BUFFER_SIZE = 1024*1024
+io.DEFAULT_BUFFER_SIZE = 512 * 1024
 
 MAX_SERIES_PER_BATCH = 25000
 MAX_DATA_PER_BATCH = 1000000
