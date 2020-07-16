@@ -14,7 +14,7 @@ app = Flask("blsgov-datasource")
 app.wsgi_app = ProxyFix(app.wsgi_app)
 
 
-@app.route('/api/files/<path>')
+@app.route('/api/files/<path:path>')
 @app.route('/api/files/')
 def get_files(path=''):
     with shared_lock():
@@ -26,7 +26,7 @@ def get_files(path=''):
             lst = [{"name": i, "type": 'dir' if os.path.isdir(os.path.join(path, i)) else 'file'} for i in lst]
             return jsonify(lst)
         else:
-            return send_file(path)
+            return send_file(path, as_attachment=True)
 
 
 @app.route('/api/db/')

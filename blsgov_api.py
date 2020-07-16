@@ -63,8 +63,7 @@ def load_db_list():
 
 
 def get_loader(db_id):
-    loader = next((l for l in loaders if l.db_id == db_id), None)
-    return loader
+    return next((l for l in loaders if l.db_id == db_id), None)
 
 
 class AbstractDbLoader(abc.ABC):
@@ -82,7 +81,7 @@ class AbstractDbLoader(abc.ABC):
         if len(ff) < 1:
             return datetime.datetime(1900, 1, 1, tzinfo=None)
         else:
-            return max(f['modified'] for f in ff)
+            return max(f['modified'] for f in ff if f['name'].startswith('data.'))
 
     @abc.abstractmethod
     def download(self):

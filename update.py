@@ -1,3 +1,4 @@
+import datetime
 import gzip
 import itertools
 import json
@@ -10,7 +11,7 @@ import zipfile
 from blsgov_api import load_db_list, get_loader
 from config import WRK_DB_DIR, META_FILE_NAME, TMP_DB_DIR, DATA_PREFIX, ASPECT_PREFIX, \
     SERIES_PREFIX, JSON_GZ_SUFFIX, JSON_SUFFIX, ZIP_SUFFIX, DB_LIST_FILE_NAME, MAX_SERIES_PER_BATCH, \
-    MAX_DATA_PER_BATCH
+    MAX_DATA_PER_BATCH, MODIFIED_LESS_THAN
 from lock import exclusive_lock
 
 TMP_PREFIX = 'tmp.'
@@ -34,11 +35,14 @@ def update_dbs(db_ids=None, force_all=False):
         pass
 
     new_db_list.sort(key=lambda d: d['modified'])
+    new_db_list = [d for d in new_db_list
+                   if datetime.datetime.now() - datetime.datetime.fromisoformat(d['modified']) < MODIFIED_LESS_THAN]
+
     for ndb in new_db_list:
         if db_ids is not None and ndb['id'] not in db_ids:
             continue
         cdb = next((i for i in cur_db_list if i['id'] == ndb['id']), None)
-        if cdb is None or cdb['modified'] < ndb['modified'] or force_all: # check corrupted files
+        if cdb is None or cdb['modified'] < ndb['modified'] or force_all:  # check corrupted files
             if cdb is not None:
                 cur_db_list.remove(cdb)
             cur_db_list.append(ndb)

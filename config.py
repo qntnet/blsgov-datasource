@@ -1,9 +1,12 @@
+import datetime
 import io
 import logging
 import os
 
 PROXY = os.getenv('PROXY')
 REGISTRATION_KEY = os.getenv('REGISTRATION_KEY', '')
+
+MODIFIED_LESS_THAN = datetime.timedelta(days=365 * 2)
 
 logging.basicConfig(level=logging.INFO)
 

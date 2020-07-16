@@ -12,6 +12,6 @@ case "$1" in
     done;
 ;;
  'server')
-    gunicorn server:app
+    gunicorn -b 0.0.0.0:8000 server:app
 ;;
 esac
