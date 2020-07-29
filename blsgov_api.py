@@ -302,6 +302,7 @@ class StandardDbLoader(AbstractDbLoader):
                 header = header.strip()
                 header = header.split('\t')
                 header = [h.strip() for h in header]
+                last = None
                 while True:
                     line = fd.readline()
                     if len(line) == 0:
