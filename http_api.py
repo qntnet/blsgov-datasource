@@ -13,6 +13,11 @@ from config import PROXY, ERROR_DELAY, DEBUG
 logger = logging.getLogger(__name__)
 
 
+HEADERS = [
+    ("Accept-Encoding", "gzip"),
+    ("User-Agent", "QuantNet (info@quantnet.ai)")
+]
+
 def log(*args):
     s = " ".join([str(i) for i in args])
     logger.log(logging.INFO, s)
@@ -23,7 +28,7 @@ def load_with_retry(url, need_json=False, use_gzip=True):
         log("request", url)
         try:
             if use_gzip == True:
-                opener.addheaders = [("Accept-Encoding", "gzip")]
+                opener.addheaders = HEADERS
             urllib.request.install_opener(opener)
             response = urllib.request.urlopen(url, timeout=10)
             body = response.read()
@@ -65,7 +70,7 @@ def load_file(url, file_name, use_gzip=True):
         try:
             log("load file: " + url + " -> " + file_name)
             if use_gzip == True:
-                opener.addheaders = [("Accept-Encoding", "gzip")]
+                opener.addheaders = HEADERS
             urllib.request.install_opener(opener)
             result = urllib.request.urlretrieve(url, file_name)
             if use_gzip and result[1].get('Content-Encoding') != 'gzip':
