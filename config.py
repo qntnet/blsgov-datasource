@@ -4,7 +4,7 @@ import logging
 import os
 
 PROXY = os.getenv('PROXY')
-REGISTRATION_KEY = os.getenv('REGISTRATION_KEY', '31dab22a9f9d4010b5d89dc9e85f4025')
+REGISTRATION_KEY = os.getenv('REGISTRATION_KEY', '')
 
 MODIFIED_LESS_THAN = datetime.timedelta(days=365 * 2)
 
